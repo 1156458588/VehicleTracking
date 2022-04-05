@@ -67,10 +67,9 @@ class RoadEncoder(object):
             else:
                 raise Exception('映射表中无对应信息！')
         else:
-            # mil_data = [data[1], 0, 0, [0, 0], 0, data[8]]
+            mil_data = [data[1], 0, 0, [0, 0], 0, data[8]]
             # self.LaneCars[mil_data[0]] = cars
-            # return self.SyncDataTime(mil_data)
-            return None
+            return self.SyncDataTime(mil_data)
 
     def SyncDataTime(self, mil_data):
 
