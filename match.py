@@ -571,9 +571,12 @@ if __name__ == '__main__':
                     # 车辆初始化
                     initialCars(car)
                     # 预测匹配
-                    forecastDistance()
+                    # forecastDistance()
                     # 车辆超时删除
                     deleteCars(first_car)
+
+
+
                     # 推送时间
                     print('k = ', k)
                     print('v = ', v)
