@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 import random
 from ZMQServer import MessageServer
-from ZMQClient import MessageClient
+from ZMQPublish import MessagePublisher
 from Coodingdata import RoadEncoder
 
 
@@ -544,7 +544,8 @@ def getSpeed(carSta):
 if __name__ == '__main__':
     encoder = RoadEncoder(lanes=4)
     msg = MessageServer()
-    msg_s = MessageClient(ip='127.0.0.1')
+    msg_s = MessagePublisher()
+    msg_s.mile_range = encoder.mil_range
     t_r = threading.Thread(target=msg.ReceiveThread, args=())
     t = threading.Thread(target=msg_s.SendThread, args=())
     t.setDaemon(True)
