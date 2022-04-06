@@ -81,7 +81,7 @@ class RoadEncoder(object):
             print("加入")
             return None
         else:
-            if abs(mil_data[5] - self.CurTimestamp) < 100:
+            if abs(mil_data[5] - self.CurTimestamp) < 200:
                 mil_data[5] = self.CurTimestamp
                 self.L_Data.append(mil_data)
                 # if self.LaneData[lane_index] is None:
