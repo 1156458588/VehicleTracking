@@ -452,8 +452,11 @@ def forecastDistance(zhiXing):
             # 两者距离差值除预测距离
             if forecastS[m] != 0 and v[m][vPosition] != car[n][cPotition]:
                 # 历史记录与车的位置差值 / 预测距离
-                temp1 = (abs(v[m][vPosition] - car[n][cPotition]) / abs(forecastS[m]))
-                temp2 = (abs(forecastS[m]) / abs(v[m][vPosition] - car[n][cPotition]))
+                xDistance = pow(abs(car[n][cTongDao] - v[m][vTongDao]) * 3.75, 2)
+                yDistance = pow(abs(v[m][vPosition] - car[n][cPotition]), 2)
+                trueDistance = pow(xDistance + yDistance, 1 / 2)
+                temp1 = (trueDistance / abs(forecastS[m]))
+                temp2 = (abs(forecastS[m]) / trueDistance)
                 temp = min(temp1, temp2)
                 # 存放到1的距离，越接近1表示可能性越大
                 distribution.append(temp)
@@ -484,8 +487,6 @@ def forecastDistance(zhiXing):
     carIndex = cleanData[0]
     # 存放筛选出的最有可能的车
     vIndex = []
-    print('gailv = ', gaiLv)
-    print('carIndex = ', carIndex)
     if len(gaiLv) == 0 or (len(gaiLv) == 0 and gaiLv[0] == 0):
         return
     for g in gaiLv:
@@ -502,7 +503,6 @@ def forecastDistance(zhiXing):
             continue
         realSpeed = ceLiangSpeed(v[vNo][vPosition], car[carNo][cPotition], v[vNo][vTime], car[carNo][cTime])
         newSpeed = (realSpeed + lastSpeed) / 2
-        print('re = ', realSpeed)
         print('第' + str(vNo) + '个车以概率' + str(gaiLv[i]) + '到达' + str(car[carNo]) + "他的速度为：", v[vNo][vSpeed])
         if gaiLv[i] > zhiXing and realSpeed * lastSpeed >= 0:
             print('预测匹配:', v[vNo], '匹配到', car[carNo], '概率为:', gaiLv[i], ' , 它的速度为：', v[vNo][vSpeed])
