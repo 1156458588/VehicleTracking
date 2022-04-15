@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 import random
 from ZMQServer import MessageServer
-from ZMQClient import MessageClient
+from ZMQPublish import MessagePublisher
 from Coodingdata import RoadEncoder
 
 
@@ -33,56 +33,68 @@ def getClean(y):
     return maxK, maxV
 
 
-def is_cross_match(record_k, record_v, info_car):
+def is_cross_match(record_k, record_v, info_car, k_type):
     def judge_condition_cross(x, y):
         flag = False
         if len(x) == 0:
             return False
-        if 1000 * _max_time_limited * 20 > x[_t] - y[
-            _t] >= _min_time_limited * 1000 and (
+        if 1000 * _max_time_limited * 20 > x[_t] - y[_t] >= _min_time_limited * 1000 and (
                 x[_scope][0] <= y[_scope][1] <=
                 x[_scope][1] or x[_scope][0] <=
-                y[_scope][0] <=
-                x[_scope][1] or y[_scope][0] <= x[_scope][1] <=
-                y[_scope][1]):
+                y[_scope][0] < x[_scope][1] or y[_scope][0] < x[_scope][1] <= y[_scope][1]):
             flag = True  # 判断预测条件
         return flag
 
     def judge_condition_small(x, y):
         if len(x) == 0:
             return False
-        if 1000 * _max_time_limited * 20 > x[_t] - y[
-            _t] >= _min_time_limited * 1000 and ((x[_p] - y[_p]) / (x[_t] - y[_t])) * y[_v] > 0:
+        # if x[_car_type]==0:
+        #     if y[_car_type]!=0:
+        #         return False
+        if y[_car_type] == 0 and (
+                x[_scope][0] <= y[_scope][1] <=
+                x[_scope][1] or x[_scope][0] <=
+                y[_scope][0] < x[_scope][1] or y[_scope][0] < x[_scope][1] <= y[_scope][1]):
+            return False
+
+        if 1000 * _max_time_limited * 20 > x[_t] - y[_t] >= _min_time_limited * 1000 and (
+                (x[_p] - y[_p]) / (x[_t] - y[_t])) * y[_v] > 0:
             # 判断预测条件
             return True
 
-    # 同个车道匹配
+    # 去点大车旁边车道的定位点
+    # for i in range(len(k_type)):
+    #     if k_type[i] == 1:
+    #         for j in range(len(info_car)):
+    #             if judge_condition_cross(info_car[j], record_v[i]) and abs(info_car[j][_ch] - record_v[i][_ch])==1:
+    #                 info_car[j] = []
 
     # 匹配同车道
     for i in range(len(info_car)):
         for j in range(len(record_v)):
-            if judge_condition_cross(info_car[i], record_v[j]) and record_v[j][_ch] == info_car[i][_ch] and record_v[j][
-                _p] > start:
-                if ((info_car[i][_p] - record_v[j][_p]) / (info_car[i][_t] - record_v[j][_t])) * record_v[j][_v] >= 0:
+            if judge_condition_cross(info_car[i], record_v[j]) and record_v[j][_ch] == info_car[i][_ch]:
+                if ((info_car[i][_p] - record_v[j][_p]) / (info_car[i][_t] - record_v[j][_t])) * record_v[j][
+                    _v] >= 0:
                     if info_car[i][_p] - record_v[j][_p] != 0:
                         print("交叉匹配同车道" + "车辆" + str(record_k[j]) + "位置从" + str(record_v[j][_p]) + '变为' + str(
                             info_car[i][_p]), info_car[i])
                         info_car[i].append(record_v[j][_v])
                         record_v[j] = info_car[i]
-                        vDeleteTime[j] = time.time() * 1000
                     else:
+                        print("位置重复出现,只更新时间", info_car[i], record_v[j])
                         record_v[j][_t] = info_car[i][_t]
-                        vDeleteTime[j] = time.time() * 1000
-                        print("位置重复出现,只更新时间")
+
                 else:
+                    if record_v[j][_p] < start:
+                        print("在起始区域出现位置后退", info_car[i], record_v[j])
+                    else:
+                        print("交叉匹配同车道出现位置倒退，只更新时间", record_v[j], info_car[i])
                     record_v[j][_t] = info_car[i][_t]
-                    vDeleteTime[j] = time.time() * 1000
-                    print("交叉匹配同车道出现位置倒退，只更新时间", record_v[j], info_car[i])
                 info_car[i] = []
                 break
 
     for i in range(len(info_car)):
-        small_distance = 30
+        small_distance = 40
         small_index = -1
         for j in range(len(record_v)):
             if judge_condition_small(info_car[i], record_v[j]) and record_v[j][_ch] == info_car[i][_ch]:
@@ -92,49 +104,44 @@ def is_cross_match(record_k, record_v, info_car):
                     small_distance = abs(info_car[i][_p] - record_v[j][_p])
                     small_index = j
         if small_index != -1:
-            print("相邻匹配同车道" + "车辆" + str(record_k[small_index]) + "位置从" + str(record_v[small_index][_p]) + '变为' + str(
-                info_car[i][_p]), info_car[i])
+            print(
+                "相邻匹配同车道" + "车辆" + str(record_k[small_index]) + "位置从" + str(record_v[small_index][_p]) + '变为' + str(
+                    info_car[i][_p]), info_car[i])
             info_car[i].append(record_v[small_index][_v])
             record_v[small_index] = info_car[i]
-            vDeleteTime[small_index] = time.time() * 1000
             info_car[i] = []
 
-    # 匹配不同车道
-    # for i in range(len(info_car)):
-    #     for j in range(len(record_v)):
-    #         if judge_condition_cross(info_car[i], record_v[j]) and abs(
-    #                 record_v[j][_ch] - info_car[i][_ch]) == 1 and record_v[j][_p] > (start):  # 默认只会变一个道
-    #             if ((info_car[i][_p] - record_v[j][_p]) / (info_car[i][_t] - record_v[j][_t])) * record_v[j][_v] >= 0:
-    #                 print("交叉匹配相邻车道" + '通道' + str(record_v[j][_ch]) + "变为" + str(info_car[i][_ch]),
-    #                       "车辆" + str(record_k[j]) + "位置从" + str(record_v[j][_p]) + '变为' + str(info_car[i][_p]),
-    #                       info_car[i])
-    #                 info_car[i].append(record_v[j][_v])
-    #                 record_v[j] = info_car[i]
-    #                 vDeleteTime[j] = time.time() * 1000
-    #                 info_car[i] = []
-    #             break
     for i in range(len(info_car)):
-        small_distance = 30
+        small_distance = 40
         small_index = -1
         for j in range(len(record_v)):
-            if judge_condition_small(info_car[i], record_v[j]) and abs(
-                    record_v[j][_ch] - info_car[i][_ch]) == 1:
-                if abs(info_car[i][_p] - record_v[j][_p]) < small_distance:
-                    small_distance = abs(info_car[i][_p] - record_v[j][_p])
-                    small_index = j
+            if judge_condition_small(info_car[i], record_v[j]):
+                if info_car[i][_car_type] == 1 and record_v[j][_car_type] == 0:
+                    continue
+                elif info_car[i][_t] - record_v[j][_t] < 2.2 * _max_time_limited * 1000 and record_v[j][_car_type] == 0:
+                    continue
+                else:
+                    if abs(record_v[j][_ch] - info_car[i][_ch]) == 1 and record_v[j][_p] > start:
+                        if abs(info_car[i][_p] - record_v[j][_p]) < small_distance:
+                            small_distance = abs(info_car[i][_p] - record_v[j][_p])
+                            small_index = j
+
         if small_index != -1:
+            distance_flag = True
             for n in range(len(record_v)):
                 if small_index != n:
                     if (info_car[i][_p] - record_v[n][_p]) * (record_v[small_index][_p] - record_v[n][_p]) < 0:
                         print("相邻匹配出现位置重叠", info_car[i], record_v[small_index], record_v[n])
                         info_car[i] = []
+                        distance_flag = False
                         break
-            print("相邻匹配相邻车道" + '通道' + str(record_v[small_index][_ch]) + "变为" + str(info_car[i][_ch]),
-                  "车辆" + "位置从" + str(record_v[small_index][_p]) + '变为' + str(info_car[i][_p]), info_car[i])
-            info_car[i].append(record_v[small_index][_v])
-            record_v[small_index] = info_car[i]
-            vDeleteTime[small_index] = time.time() * 1000
-            info_car[i] = []
+
+            if distance_flag:
+                print("相邻匹配相邻车道" + '通道' + str(record_v[small_index][_ch]) + "变为" + str(info_car[i][_ch]),
+                      "车辆" + "位置从" + str(record_v[small_index][_p]) + '变为' + str(info_car[i][_p]), info_car[i])
+                info_car[i].append(record_v[small_index][_v])
+                record_v[small_index] = info_car[i]
+                info_car[i] = []
 
     return record_k, record_v, info_car
 
@@ -154,7 +161,7 @@ def is_path_judge(former_record_v, new_record_v):
         ave_speed = 0
         for i in range(len(ave_pos)):
             ave_speed += ave_pos[i] / ave_time[i]
-        return ave_speed / len(ave_pos) if ave_speed / len(ave_pos) > 10 else 10
+        return ave_speed / len(ave_pos) if ave_speed / len(ave_pos) > 5 else 5
 
     new_index = []
     for new_location in range(len(new_record_v)):
@@ -177,37 +184,64 @@ def is_path_judge(former_record_v, new_record_v):
 
     for i in range(len(new_record_v)):
         if new_record_v[i] != former_record_v[i]:
-            car_his_pos[i].append(new_record_v[i][_p])
-            car_his_pos_time[i].append(new_record_v[i][_t])
-            if len(car_his_pos[i]) > 4:
-                new_record_v[i][_v] = is_average_position(np.array(car_his_pos[i][-5:]), car_his_pos_time[i][-5:])
+            if new_record_v[i][_ch] != former_record_v[i][_ch]:  # 变道
+                line_change[i].append(copy.deepcopy(former_record_v))  # 存入变道之前位置
+                line_change[i].append(copy.deepcopy(new_record_v[i]))
+
+            if len(line_change[i]) != 0:
+                line_change_flag = True
+                print("%%%%%%%%%")
+                if len(line_change[i]) > 3:
+                    if kType[i] == 0:  # 小车变成大车
+                        car_position_count = 0
+                        for history_car_position in line_change[i][0]:
+                            if history_car_position[_ch] == line_change[i][0][i][_ch] and kType[
+                                car_position_count] == 1:
+                                history_distance = history_car_position[_p] - line_change[i][0][i][_p]
+                                # if line_change[i][0][i][_v]*history_distance<0 and abs(history_distance)<35:
+                                if abs(history_distance) < 35:
+                                    print("小车变道出现错误", "小车变道点为", line_change[i][0][i], "小车已经行驶到", line_change[i][-1]
+                                          , "最近的大车历史位置为", line_change[i][0][car_position_count], '最近大车已经行驶到',
+                                          new_record_v[car_position_count])
+                                    car_position_tmp = new_record_v[i]  # 小车定位
+                                    new_record_v[i] = new_record_v[car_position_count]
+                                    new_record_v[car_position_count] = car_position_tmp
+                                    print("位置纠正，清空小车变道信息")
+                                    line_change_flag = False
+                                    line_change[i] = []
+                                    break
+                                else:
+                                    print("小车变道点出现问题，没有找到合适的点进行纠正", line_change[i][0][i], "小车已经行驶到", line_change[i][-1],
+                                          "变道点所有车辆信息为", line_change[i][0])
+                            car_position_count += 1  # 自增点确定车辆类型
+
+                    # if kType[i] ==1: #大车变小车
+
+                if line_change_flag and new_record_v[i] != line_change[i][-1] and new_record_v[i][_car_type] != kType[
+                    i]:  # 车型不一致
+                    time_remove_list = []
+                    for time_index in range(len(line_change[i])):
+                        if time_index > 0 and new_record_v[i][_t] - line_change[i][time_index][_t] > 2000:  # 大于2s移掉的
+                            time_remove_list.append(line_change[i][time_index])
+
+                    print("$$$",line_change)
+                    print("$$$",i)
+                    print("$$$", new_record_v)
+                    for _remove_position in time_remove_list:
+                        line_change[i].remove(_remove_position)
+
+                    line_change[i].append(copy.deepcopy(new_record_v[i]))
+                    if new_record_v[i][_t] - line_change[i][0][i][_t] > 10000:
+                        print("变道时间超过了10s仍符合条件，清空此次变道信息")
+                        line_change[i] = []
+
+            vDeleteTime[i] = time.time() * 1000
+            car_his_pos[i].append(copy.deepcopy(new_record_v[i][_p]))
+            car_his_pos_time[i].append(copy.deepcopy(new_record_v[i][_t]))
+            if len(car_his_pos[i]) >= 10:
+                new_record_v[i][_v] = is_average_position(np.array(car_his_pos[i][-10:]), car_his_pos_time[i][-10:])
             else:
                 print('没有存够位置进行速度更新', car_his_pos[i], car_his_pos_time[i])
-
-
-# 基于车辆最短距离
-# def is_smalldistance(record_k, record_v, info_car):
-
-# for i in range(len(info_car)):
-#     small_distance = 40
-#     small_index = -1
-#     for j in range(len(record_v)):
-#         if judge_condition_small(info_car[i], record_v[j]) and abs(
-#                 record_v[j][_ch] - info_car[i][_ch]) == 1:
-#             if abs(info_car[i][_p] - record_v[j][_p]) < small_distance:
-#                 small_distance = abs(info_car[i][_p] - record_v[j][_p])
-#                 small_index = j
-#     if small_index != -1:
-#         car_speed = ((info_car[i][_p] - record_v[small_index][_p]) * 1000 / (
-#                 info_car[i][_t] - record_v[small_index][_t]) + record_v[small_index][_v]) / 2
-#         info_car[i].append(car_speed)  # 加入速度
-#         record_v[small_index] = info_car[i]
-#         vDeleteTime[small_index] = time.time() * 1000
-#         print("相邻匹配相邻车道" + '通道' + str(record_v[small_index][_ch]) + "变为" + str(info_car[i][_ch]),
-#               "车辆" + str(record_k[small_index]) + "位置从" + str(record_v[small_index][_p]) + '变为' + str(
-#                   info_car[i][_p]),
-#               info_car[i])
-#         info_car[i] = []
 
 
 def Iou(newMessage, oldMessage):
@@ -235,18 +269,16 @@ def Distance(a, b, threshold):
 
 
 def isDuplicated(a, b, c1, c2):
-    print('a = ', a)
-    print('b = ', b)
-    print('c1 = ', c1)
-    print('c2 = ', c2)
     liCheng = []
     for i in range(len(b)):
         liCheng.append(b[i][cPotition])
     # print('licheng = ', liCheng, ", ceshi = ", a, ', c1= ', c1, ', c2 = ', c2)
+    # 不允许攒相同的点
     if a not in liCheng and c1 == c2:
         return False
-    if a == b[-1][cPotition] and c1 == c2:
-        return False
+    # 允许攒相同的点
+    # if a == b[-1][cPotition] and c1 == c2:
+    #     return False
     elif a not in liCheng and c1 != c2:
         return True
     elif a in liCheng and c1 == c2:
@@ -260,6 +292,7 @@ def initialCars(car):
     global usedRecord
     global vt
     global entrance
+    length = len(carStack)
     for messageNo in car:
         if len(messageNo) == 0:
             continue
@@ -290,18 +323,37 @@ def initialCars(car):
                     if len(carStack[i]) >= initialNum:
                         carStack[i].append(messageNo)
                         vt = getSpeed(carStack[i])
-                        k.append(str(uuid.uuid1()))
-                        temp = messageNo
+                        # k.append(str(uuid.uuid1()))
+                        k.append(car_num + 1)
+                        temp = copy.deepcopy(messageNo)
                         ty = getCarType(carStack[i])
+                        kType.append(ty)
+                        line_change.append([])
                         temp[cCartype] = ty
                         temp.append(vt)
                         car_his_pos.append([temp[_p]])
                         car_his_pos_time.append([temp[_t]])
+                        print('添加的temp = ', temp)
                         v.append(temp)
+                        print('v22 = ', v)
                         vDeleteTime.append(time.time() * 1000)
                         pushFlag = True
                         car_num += 1
-                        print("删除:", carStack[i])
+
+                        # if car_num == 5:
+                        #     print('cTong = ', temp[cTongDao])
+                        #     temp[cCartype] = 0
+                        #     temp[cTongDao] = 1
+                        #     temp[cPotition] += 10
+                        #     kType.append(0)
+                        #     vDeleteTime.append(time.time() * 1000)
+                        #     v.append(temp)
+                        #     k.append(car_num + 1)
+                        #     car_num += 1
+                        #     car_his_pos.append([temp[_p]])
+                        #     car_his_pos_time.append([temp[_t]])
+
+                        print("攒点删除:", carStack[i])
                         carStack.remove(carStack[i])
                         cStackDeleteTime.remove(cStackDeleteTime[i])
                         usedRecord.append(messageNo)
@@ -334,11 +386,25 @@ def deleteCars(_car):
     #         k.remove(k[i])
     #         vDeleteTime.remove(vDeleteTime[i])
     #         car_num = car_num - 1
+    for i in range(len(foreCastAndBianDaoStack) - 1, -1, -1):
+        # print("时间差2 = ", time.time() - ""cStackDeleteTime[i])
+        if time.time() * 1000 - foreCastAndBianDaoStack[i][-1][cTime] > deleteZanDian:
+            print('攒点超时删除', foreCastAndBianDaoStack[i])
+            foreCastAndBianDaoStack.remove(foreCastAndBianDaoStack[i])
+
+    for i in range(len(v) - 1, -1, -1):
+        if chuKou < v[i][vScope][0]:
+            v.remove(v[i])
+            k.remove(k[i])
+            kType.remove(kType[i])
+            line_change.remove(line_change[i])
+            vDeleteTime.remove(vDeleteTime[i])
+            car_num = car_num - 1
 
     for i in range(len(carStack) - 1, -1, -1):
         # print("时间差2 = ", time.time() - ""cStackDeleteTime[i])
         if time.time() * 1000 - cStackDeleteTime[i] > stackTime:
-            print('stack删除', carStack[i])
+            print('stack超时删除', carStack[i])
             carStack.remove(carStack[i])
             cStackDeleteTime.remove(cStackDeleteTime[i])
 
@@ -412,139 +478,291 @@ def averageSpeed(speed):
 # 计算测量速度(m/s)
 def ceLiangSpeed(lastP, curP, lastTime, curTime):
     print('diff = ', (curTime - lastTime + 1) / 1000)
-    return (curP - lastP) / ((curTime - lastTime + 1) / 1000)
+    a = (curTime - lastTime + 1) / 1000
+    if a < 0:
+        print('出错！！！！！！！！！！！！！！！！！！！！！')
+    return (curP - lastP) / a
 
 
-# 预测匹配函数
+# 预测匹配函数(不赞点)
+# def forecastDistance(zhiXing):
+#     # 寻找全局变量
+#     global car
+#     global p
+#     global vPosition
+#     global vTime
+#     global vSpeed
+#     # 预测距离
+#     forecastS = []
+#     # 概率分布矩阵
+#     forestcastArray = []
+#     print('当前的car是：', car)
+#     # 对每一辆历史记录的车计算一个预测距离
+#     for i in range(len(k)):
+#         # 上一次记录的时间
+#         lastTime = vDeleteTime[i]
+#         # 预测行驶距离 = 时间（需要将毫秒转成秒） * 速度
+#         timeDiff = (time.time() * 1000 - lastTime) / 1000
+#         if timeDiff > 0:
+#             distance = timeDiff * abs(v[i][vSpeed])
+#             # distance = ((time.time() * 1000 - lastTime) / 1000) * 22
+#             forecastS.append(abs(distance))
+#         else:
+#             forecastS.append(0)
+#     # 计算每一个历史记录的预测距离与当前所有定位的距离比值,如果有m个车在v中，car中有n条记录，那么将有m*n个记录
+#     print('每辆车的预测距离：', forecastS)
+#     for m in range(len(k)):
+#         distribution = []
+#         for n in range(len(car)):
+#             if len(car[n]) == 0:
+#                 distribution.append(0)
+#                 continue
+#             # 两者距离差值除预测距离
+#             if forecastS[m] != 0 and v[m][vPosition] != car[n][cPotition]:
+#                 # 历史记录与车的位置差值 / 预测距离
+#                 xDistance = pow(abs(car[n][cTongDao] - v[m][vTongDao]) * 3.75, 2)
+#                 yDistance = pow(abs(v[m][vPosition] - car[n][cPotition]), 2)
+#                 trueDistance = pow(xDistance + yDistance, 1 / 2)
+#                 temp1 = (trueDistance / abs(forecastS[m]))
+#                 temp2 = (abs(forecastS[m]) / trueDistance)
+#                 temp = min(temp1, temp2)
+#                 # 存放到1的距离，越接近1表示可能性越大
+#                 distribution.append(temp)
+#             else:
+#                 distribution.append(0)
+#             # if forecastS[m] != 0 and v[m][vPosition] != car[n][cPotition]:
+#             #     # 历史记录与车的位置差值 / 预测距离
+#             #     temp1 = (abs(v[m][vPosition] - car[n][cPotition]) / abs(forecastS[m]))
+#             #     temp2 = (abs(forecastS[m]) / abs(v[m][vPosition] - car[n][cPotition]))
+#             #     temp = min(temp1, temp2)
+#             #     # 存放到1的距离，越接近1表示可能性越大
+#             #     distribution.append(temp)
+#             # else:
+#             #     distribution.append(0)
+#         # 存放概率矩阵(形状是车的个数*当前定位个数)
+#         forestcastArray.append(distribution)
+#     # 遍历概率矩阵选出最合理的定位
+#     maxK = []
+#     maxV = []
+#     # [概率， car索引]
+#     yArray = []
+#     print('预测行驶概率矩阵 = ', forestcastArray)
+#     for m in range(len(v)):
+#         # 找出每辆车最大概率的索引
+#         maxIndex = np.argmax(forestcastArray[m])
+#         # 保存这个概率值
+#         maxK.append(forestcastArray[m][maxIndex])
+#         # 保存这个概率对应的car索引
+#         maxV.append(maxIndex)
+#     # [概率，car索引]
+#     for i in range(len(maxK)):
+#         yArray.append([maxK[i], maxV[i]])
+#     print('操作矩阵 = ', yArray)
+#     # 去除定位点一样的概率更低的点
+#     cleanData = getClean(yArray)
+#     gaiLv = cleanData[1]
+#     carIndex = cleanData[0]
+#     # 存放筛选出的最有可能的车
+#     vIndex = []
+#     if len(gaiLv) == 0 or (len(gaiLv) == 0 and gaiLv[0] == 0):
+#         return
+#     for g in gaiLv:
+#         vIndex.append(np.where(np.array(maxK) == g)[0])
+#     for i in range(len(gaiLv)):
+#         if len(vIndex[i]) > 1:
+#             vNo = int(vIndex[i][0])
+#         else:
+#             vNo = int(vIndex[i])
+#         carNo = carIndex[i]
+#         lastSpeed = v[vNo][vSpeed]
+#         if len(car[carNo]) == 0:
+#             continue
+#         realSpeed = ceLiangSpeed(v[vNo][vPosition], car[carNo][cPotition], v[vNo][vTime], car[carNo][cTime])
+#         # newSpeed = (realSpeed + lastSpeed) / 2
+#         print('第' + str(vNo) + '个车以概率' + str(gaiLv[i]) + '到达' + str(car[carNo]) + "他的速度为：", v[vNo][vSpeed])
+#         if gaiLv[i] > zhiXing and realSpeed * lastSpeed >= 0 and v[vNo][vCartype] == car[carNo][cCartype] and abs(
+#                 v[vNo][vTongDao] - car[carNo][cTongDao]) <= 1:
+#             if v[vNo][_ch] != car[carNo][_ch]:
+#                 count = 0
+#                 for car_no in v:
+#                     if car[carNo][_ch] == car_no[_ch] and (car[carNo][_p] - car_no[_p]) * (v[vNo][_p] - car_no[_p]) < 0:
+#                         count += 1
+#                 if count > 2:
+#                     continue
+#             print('预测匹配:', v[vNo], '匹配到', car[carNo], '概率为:', gaiLv[i], ' , 它的速度为：', v[vNo][vSpeed])
+#             v[vNo][vPosition] = car[carNo][cPotition]
+#             v[vNo][vScope] = car[carNo][cScope]
+#             v[vNo][vCartype] = car[carNo][cCartype]
+#             v[vNo][vTime] = car[carNo][cTime]
+#             v[vNo][vTongDao] = car[carNo][cTongDao]
+#             vDeleteTime[vNo] = time.time() * 1000
+#             car[carNo] = []
+
+# 攒点预测函数
 def forecastDistance(zhiXing):
-    # 寻找全局变量
-    global car
-    global v
-    global p
-    global vPosition
-    global vTime
-    global vSpeed
+    car2 = []
+    foreList = []
+    # 加入攒够的轨迹
+    for index in range(len(foreCastAndBianDaoStack)):
+        if len(foreCastAndBianDaoStack[index]) == zanDianNeedNum + 1:
+            car2.append(foreCastAndBianDaoStack[index][-1])
+            foreList.append(index)
     # 预测距离
     forecastS = []
     # 概率分布矩阵
     forestcastArray = []
-    print('当前的car是：', car)
-    # 对每一辆历史记录的车计算一个预测距离
-    for i in range(len(v)):
-        # 上一次记录的时间
-        lastTime = vDeleteTime[i]
-        # 预测行驶距离 = 时间（需要将毫秒转成秒） * 速度
-        timeDiff = (time.time() * 1000 - lastTime) / 1000
-        if timeDiff > 0:
-            distance = timeDiff * abs(v[i][vSpeed])
-            # distance = ((time.time() * 1000 - lastTime) / 1000) * 22
-            forecastS.append(abs(distance))
-        else:
-            forecastS.append(0)
-    # 计算每一个历史记录的预测距离与当前所有定位的距离比值,如果有m个车在v中，car中有n条记录，那么将有m*n个记录
-    print('每辆车的预测距离：', forecastS)
-    for m in range(len(v)):
-        distribution = []
-        for n in range(len(car)):
-            if len(car[n]) == 0:
-                distribution.append(0)
-                continue
-            # 两者距离差值除预测距离
-            if forecastS[m] != 0 and v[m][vPosition] != car[n][cPotition]:
-                # 历史记录与车的位置差值 / 预测距离
-                xDistance = pow(abs(car[n][cTongDao] - v[m][vTongDao]) * 3.75, 2)
-                yDistance = pow(abs(v[m][vPosition] - car[n][cPotition]), 2)
-                trueDistance = pow(xDistance + yDistance, 1 / 2)
-                temp1 = (trueDistance / abs(forecastS[m]))
-                temp2 = (abs(forecastS[m]) / trueDistance)
-                temp = min(temp1, temp2)
-                # 存放到1的距离，越接近1表示可能性越大
-                distribution.append(temp)
+
+    if len(car2) > 0:
+        print('当前的car是：', car2)
+        # 对每一辆历史记录的车计算一个预测距离
+        for i in range(len(k)):
+            # 上一次记录的时间
+            lastTime = vDeleteTime[i]
+            # 预测行驶距离 = 时间（需要将毫秒转成秒） * 速度
+            timeDiff = (time.time() * 1000 - lastTime) / 1000
+            if timeDiff > 0:
+                distance = timeDiff * abs(v[i][vSpeed])
+                # distance = ((time.time() * 1000 - lastTime) / 1000) * 22
+                forecastS.append(abs(distance))
             else:
-                distribution.append(0)
-        # 存放概率矩阵(形状是车的个数*当前定位个数)
-        forestcastArray.append(distribution)
-    # 遍历概率矩阵选出最合理的定位
-    maxK = []
-    maxV = []
-    # [概率， car索引]
-    yArray = []
-    print('预测行驶概率矩阵 = ', forestcastArray)
-    for m in range(len(v)):
-        # 找出每辆车最大概率的索引
-        maxIndex = np.argmax(forestcastArray[m])
-        # 保存这个概率值
-        maxK.append(forestcastArray[m][maxIndex])
-        # 保存这个概率对应的car索引
-        maxV.append(maxIndex)
-    # [概率，car索引]
-    for i in range(len(maxK)):
-        yArray.append([maxK[i], maxV[i]])
-    print('操作矩阵 = ', yArray)
-    # 去除定位点一样的概率更低的点
-    cleanData = getClean(yArray)
-    gaiLv = cleanData[1]
-    carIndex = cleanData[0]
-    # 存放筛选出的最有可能的车
-    vIndex = []
-    if len(gaiLv) == 0 or (len(gaiLv) == 0 and gaiLv[0] == 0):
-        return
-    for g in gaiLv:
-        vIndex.append(np.where(np.array(maxK) == g)[0])
-    print('vindex=', vIndex)
-    for i in range(len(gaiLv)):
-        if len(vIndex[i]) > 1:
-            vNo = int(vIndex[i][0])
-        else:
-            vNo = int(vIndex[i])
-        carNo = carIndex[i]
-        lastSpeed = v[vNo][vSpeed]
-        if len(car[carNo]) == 0:
-            continue
-        realSpeed = ceLiangSpeed(v[vNo][vPosition], car[carNo][cPotition], v[vNo][vTime], car[carNo][cTime])
-        newSpeed = (realSpeed + lastSpeed) / 2
-        print('第' + str(vNo) + '个车以概率' + str(gaiLv[i]) + '到达' + str(car[carNo]) + "他的速度为：", v[vNo][vSpeed])
-        if gaiLv[i] > zhiXing and realSpeed * lastSpeed >= 0:
-            print('预测匹配:', v[vNo], '匹配到', car[carNo], '概率为:', gaiLv[i], ' , 它的速度为：', v[vNo][vSpeed])
-            v[vNo][vSpeed] = newSpeed
-            v[vNo][vPosition] = car[carNo][cPotition]
-            v[vNo][vScope] = car[carNo][cScope]
-            v[vNo][vCartype] = car[carNo][cCartype]
-            v[vNo][vTime] = car[carNo][cTime]
-            v[vNo][vTongDao] = car[carNo][cTongDao]
-            car[carNo] = []
+                forecastS.append(0)
+        # 计算每一个历史记录的预测距离与当前所有定位的距离比值,如果有m个车在v中，car中有n条记录，那么将有m*n个记录
+        print('每辆车的预测距离：', forecastS)
+        for m in range(len(k)):
+            distribution = []
+            for n in range(len(car2)):
+                if len(car2[n]) == 0:
+                    distribution.append(0)
+                    continue
+                # 两者距离差值除预测距离
+                if forecastS[m] != 0 and v[m][vPosition] != car2[n][cPotition]:
+                    # 历史记录与车的位置差值 / 预测距离
+                    xDistance = pow(abs(car2[n][cTongDao] - v[m][vTongDao]) * 3.75, 2)
+                    yDistance = pow(abs(v[m][vPosition] - car2[n][cPotition]), 2)
+                    trueDistance = pow(xDistance + yDistance, 1 / 2)
+                    temp1 = (trueDistance / abs(forecastS[m]))
+                    temp2 = (abs(forecastS[m]) / trueDistance)
+                    temp = min(temp1, temp2)
+                    # 存放到1的距离，越接近1表示可能性越大
+                    distribution.append(temp)
+                else:
+                    distribution.append(0)
+            # 存放概率矩阵(形状是车的个数*当前定位个数)
+            forestcastArray.append(distribution)
+        # 遍历概率矩阵选出最合理的定位
+        maxK = []
+        maxV = []
+        # [概率， car索引]
+        yArray = []
+        print('预测行驶概率矩阵 = ', forestcastArray)
+        for m in range(len(v)):
+            # 找出每辆车最大概率的索引
+            maxIndex = np.argmax(forestcastArray[m])
+            # 保存这个概率值
+            maxK.append(forestcastArray[m][maxIndex])
+            # 保存这个概率对应的car索引
+            maxV.append(maxIndex)
+        # [概率，car索引]
+        for i in range(len(maxK)):
+            yArray.append([maxK[i], maxV[i]])
+        print('操作矩阵 = ', yArray)
+        # 去除定位点一样的概率更低的点
+        cleanData = getClean(yArray)
+        gaiLv = cleanData[1]
+        carIndex = cleanData[0]
+        # 存放筛选出的最有可能的车
+        vIndex = []
+        if len(gaiLv) == 0 or (len(gaiLv) == 0 and gaiLv[0] == 0):
+            return
+        for g in gaiLv:
+            vIndex.append(np.where(np.array(maxK) == g)[0])
+        for i in range(len(gaiLv)):
+            if len(vIndex[i]) > 1:
+                vNo = int(vIndex[i][0])
+            else:
+                vNo = int(vIndex[i])
+            carNo = carIndex[i]
+            lastSpeed = v[vNo][vSpeed]
+
+            if len(car2[carNo]) == 0:
+                continue
+            realSpeed = ceLiangSpeed(v[vNo][vPosition], car2[carNo][cPotition], v[vNo][vTime], car2[carNo][cTime])
+            # newSpeed = (realSpeed + lastSpeed) / 2
+            print('第' + str(vNo) + '个车以概率' + str(gaiLv[i]) + '到达' + str(car2[carNo]) + "他的速度为：", v[vNo][vSpeed])
+            if gaiLv[i] > zhiXing and realSpeed * lastSpeed >= 0 and v[vNo][vCartype] == car2[carNo][cCartype] and abs(
+                    v[vNo][vTongDao] - car2[carNo][cTongDao]) <= 1 and car2[carNo][cTime] - v[vNo][vTime] > 0:
+                # if v[vNo][_ch] != car2[carNo][_ch]:
+                #     count = 0
+                #     for car_no in v:
+                #         if car2[carNo][_ch] == car_no[_ch] and (car2[carNo][_p] - car_no[_p]) * (v[vNo][_p] - car_no[_p]) < 0:
+                #             count += 1
+                #     if count > 2:
+                #         continue
+                print('预测匹配:', v[vNo], '匹配到', car2[carNo], '概率为:', gaiLv[i], ' , 它的速度为：', v[vNo][vSpeed])
+                print('lastSpeed = ', lastSpeed)
+                print('reakSpeed = ', realSpeed)
+                v[vNo][vPosition] = car2[carNo][cPotition]
+                v[vNo][vScope] = car2[carNo][cScope]
+                v[vNo][vCartype] = car2[carNo][cCartype]
+                v[vNo][vTime] = car2[carNo][cTime]
+                v[vNo][vTongDao] = car2[carNo][cTongDao]
+                vDeleteTime[vNo] = time.time() * 1000
+                foreCastAndBianDaoStack.remove(foreCastAndBianDaoStack[foreList[carNo]])
 
 
 def getSpeed(carSta):
     # print('carsta = ', carSta)
     p1 = carSta[0][cPotition]
     direction = []
-
     # for j in range(len(carSta)):
     #     if j != 0:
     #         direction.append((carSta[j][cPotition] - p1) / abs((carSta[j][cPotition] - p1)))
-
     direction = np.array(direction)
     num1 = np.where(direction == 1)[0]
     num2 = np.where(direction == -1)[0]
-    print('1 = ', str(carSta[-1][cTime]))
-    print('dd = ', str(carSta[-1][cTime] - carSta[0][cTime]))
     print(carSta[0][cTime])
     speed = abs(carSta[-1][cPotition] - p1) / ((carSta[-1][cTime] - carSta[0][cTime] + 1) / 1000)
-    print('位置差：', abs(carSta[-1][cPotition] - p1))
     # print('时间差:', ((carSta[-1][cTime] - carSta[0][cTime])) if num1.sh)
     #     print('速度是：', speed)
     #     #ape[0] > num2.shape[0]:
     #     return speed
     # else:
     #     return -1 * speed
-    return abs(speed)
+    if abs(speed) == 0:
+        return 10
+    else:
+        return abs(speed)
+
+
+# 攒点
+def zanDian():
+    print('hehe1')
+    # 在最开始获取数组长度
+    length = len(foreCastAndBianDaoStack)
+    for c in car:
+        pushFlag = False
+        if len(c) > 0:
+            # print('a=', c[cPotition])
+            # print('b=', entrance[-1])
+            if c[cPotition] != 0 and c[cPotition] not in entrance and c[cPotition] > entrance[-1]:
+                # print('hehe3')
+                for i in range(length):
+                    # print('dd, ', foreCastAndBianDaoStack[i][-1][cPotition])
+                    if 0 < c[cPotition] - foreCastAndBianDaoStack[i][-1][cPotition] < zanDianThreshold and c[
+                        cTongDao] == foreCastAndBianDaoStack[i][-1][cTongDao] and len(
+                            foreCastAndBianDaoStack[i]) <= zanDianNeedNum:
+                        foreCastAndBianDaoStack[i].append(c)
+                        pushFlag = True
+            if not pushFlag:
+                foreCastAndBianDaoStack.append([c])
+    # print('foreCastAndBianDaoStack = ', foreCastAndBianDaoStack)
 
 
 if __name__ == '__main__':
     encoder = RoadEncoder(lanes=4)
     msg = MessageServer()
-    msg_s = MessageClient(ip='127.0.0.1')
+    msg_s = MessagePublisher()
+    msg_s.mile_range = encoder.mil_range
     t_r = threading.Thread(target=msg.ReceiveThread, args=())
     t = threading.Thread(target=msg_s.SendThread, args=())
     t.setDaemon(True)
@@ -561,21 +779,16 @@ if __name__ == '__main__':
     # 初始化最小距离
     threshold = 20
     # 初始化攒点个数
-    initialNum = 3
-    # 定位索引
-    p = 1
-    # 范围索引
-    s = 2
-    # 时间索引
-    timeIndex = -2
+    initialNum = 1
+    # 攒点删除时间
+    deleteZanDian = 1000
     # 删除车辆时间
-    timeThreshold = 2000
+    timeThreshold = 5000
     # 栈时间
-    stackTime = 1000
-    # 初始化速度
-    vt = 70
+    stackTime = 2000
     k = []
     v = []
+    kType = []
     _ch = 0  # 通道号
     _p = 1  # 位置
     _max = 2
@@ -584,7 +797,7 @@ if __name__ == '__main__':
     _car_type = 4
     _v = 6
     _max_time_limited = 0.2  # 0.5滑窗设为0.5  0.1设为0.1
-    _min_time_limited = 0.01  # 0.5滑窗设为0.3  0.1设为0.05
+    _min_time_limited = 0.01  # 0.5滑窗设为0.3  0.1设为0.05, 0.2设为0.01
     # v
     vTime = 5  # v中存放时间的索引
     vSpeed = 6  # v中存放速度的索引
@@ -604,11 +817,17 @@ if __name__ == '__main__':
     cStackDeleteTime = []
     t = 0
     # 车辆入口
-    start = 10043
-    entrance = [i for i in range(9998, start)]
+    start = 10048
+    end = 9998
+    entrance = [i for i in range(end, start)]
     car_his_pos = []
     car_his_pos_time = []
-    zhiX = 0.9
+    line_change = []
+    zhiXingDu = 0.87
+    chuKou = 10698
+    foreCastAndBianDaoStack = []
+    zanDianNeedNum = 1
+    zanDianThreshold = 35
 
     while True:
         print()
@@ -636,7 +855,7 @@ if __name__ == '__main__':
                 else:
                     print()
                     print("@@@@@@@@@@")
-                    print('map_data:', map_data)
+                    # print('map_data:', map_data)
                     # file = open("E:\\推送信息6.txt", 'a+', encoding='UTF-8')
                     # file.writelines("第" + str(t) + "次：" + str(map_data) + "\n")
                     # file.close()
@@ -654,53 +873,89 @@ if __name__ == '__main__':
                     tmp = []
                     for c in car:
                         if len(c) > 0:
-                            if c[cTongDao] == 3 or c[cTongDao] == 2 or c[cTongDao] == 1 or c[cTongDao] == 0:
+                            if c[cTongDao] == 3 or c[cTongDao] == 2 or c[cTongDao] == 1:
                                 tmp.append(c)
                     car = tmp
                     print('car = ', car)
                     # 影响范围判断
                     former_v = copy.deepcopy(v)
-                    is_cross_match(k, v, car)
+                    is_cross_match(k, v, car, kType)
                     is_path_judge(former_v, v)
+                    # 匹配不上的点攒下来
+                    zanDian()
                     # 预测匹配
-                    forecastDistance(zhiX)
-                    # 车辆初始化
-                    initialCars(car)
-                    # 车辆超时删除
-                    deleteCars(first_car)
+                    forecastDistance(zhiXingDu)
+
                     # 推送时间
                     print('k = ', k)
                     print('v = ', v)
                     print('carStack = ', carStack)
                     print('stackLen = ', len(carStack))
                     print('car_num = ', car_num)
+                    print('kType = ', kType)
+
+                    # if len(v) == 4:
+                    #     v.append([1, v[-1][vPosition], 0.3121134638786316, v[-1][vScope], 0, v[-1][vTime], v[-1][vSpeed]])
+                    #     k.append(car_num + 1)
+                    #     vDeleteTime.append(time.time() * 1000)
+                    #     kType.append(0)
+                    #     car_num += 1
+                    #     car_his_pos.append([v[-1][_p]])
+                    #     car_his_pos_time.append([v[-1][_t]])
+
+                    # 工况7
+                    # for i in range(len(v)):
+                    #     if i < 2:
+                    #         v[i][vCartype] = 1
+                    #     else:
+                    #         v[i][vCartype] = 0
+
                     if len(v) != len(vDeleteTime):
-                        print("v出错！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！1")
-                    car = []
+                        print("v出错！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！! !")
                     if len(cStackDeleteTime) != len(carStack):
                         print("stack出错！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！")
-
                     newV = copy.deepcopy(v)
+                    tmp_v = copy.deepcopy(v)
+                    # 车辆初始化
+
+                    # 工况4
+                    # if len(v) == 6:
 
                     # if len(newV) != 0 and len(k) != 0:
                     #     file = open("E:\\结果信息6.txt", 'a+', encoding='UTF-8')
                     #     file.writelines("第" + str(t) + "次：" + str(newV) + "\n")
-                    #     file.close()
-
+                    #     file.closec
+                    for i in range(len(newV)):
+                        if len(former_v) != 0 and newV[i] == former_v[i]:
+                            tmp_average_v = 0
+                            for tmp_average_p in newV:
+                                tmp_average_v += tmp_average_p[_v]
+                            tmp_average_v = tmp_average_v / len(newV) if abs(tmp_average_v / len(newV)) > abs(
+                                tmp_v[i][_v]) else tmp_v[i][_v]
+                            tmp_v[i][_p] = tmp_v[i][_p] + int(
+                                tmp_v[i][_v] * ((time.time() * 1000 - vDeleteTime[i]) / 1000) * 1.1)
                     for i in range(len(newV)):
                         newV[i][-2] = pushT
-
                     if len(newV) != 0 and len(k) != 0:
                         print('vv = ', newV)
-                        tmp_v = []
-                        tmp_k = []
-                        for i in range(len(former_v)):
-                            if former_v[i] != newV[i]:
-                                tmp_v.append(newV[i])
-                                tmp_k.append(k[i])
-                        msg_s.PackBag(newV[0][-2], tmp_k, tmp_v)
-                        # print("推送成功！")
-                    # t = t + 1
+                        # print("推送的v为", tmp_v)
+                        # msg_s.PackBag(newV[0][-2], k, newV)
+                        msg_s.PackBag(newV[0][-2], k, newV)
+                        # print('k=', str(k))
+                        # print('newV[0][-2]', newV[0][-2])
+                        # print('newV =', str(newV))
+                        # if len(newV) >= 4:
+                        #     file=open('E:\\大车判断8.txt', 'a+', encoding='utf-8')
+                        #     file.writelines('车辆编号：'+str(k)+',当前时间戳：'+str(newV[0][-2])+',车辆位置信息：'+str(newV)+'\n')
+                        #     file.writelines(
+                        #         '车辆位置信息：' + str(newV[3]) + '\n')
+                        #     file.close()
+                        print("推送成功！")
+
+                    # 车辆初始化
+                    initialCars(car)
+                    # 车辆超时删除
+                    deleteCars(first_car)
                     print('end:*****************************')
                     print()
             except Exception as e:

@@ -24,12 +24,13 @@ def MapLane(lane):
 class RoadEncoder(object):
     def __init__(self, filepath='2.csv', lanes=8):
         self.EncodDict = {}
-        self.LoadCodingSheet(filepath)
         self.lanes = lanes
         self.LaneData = [None] * lanes
         self.LaneCars = [-1] * lanes
         self.CurTimestamp = 0
         self.L_Data = []
+        self.mil_range = [None] * 8  # 当前编码表中各车道最大最小里程
+        self.LoadCodingSheet(filepath)
 
     def ResetLaneData(self):
         self.LaneData = [None] * self.lanes
@@ -37,10 +38,21 @@ class RoadEncoder(object):
         self.CurTimestamp = 0
 
     def LoadCodingSheet(self, filepath):
+        min_mil = [999999] * 8
+        max_mil = [0] * 8
         csv_file = open(filepath, "r")
         reader = csv.reader(csv_file)
         for item in reader:
             self.EncodDict['-'.join(item[0:3])] = '-'.join(item[3:5])
+            lane = MapLane(item[3])
+            mil = int(item[4])
+            if min_mil[lane] > mil:
+                min_mil[lane] = mil
+            if max_mil[lane] < mil:
+                max_mil[lane] = mil
+        for i in range(len(self.mil_range)):
+            self.mil_range[i] = [min_mil[i], max_mil[i]]
+        pass
 
     def MappingData(self, data):
         data = list(data)
@@ -72,7 +84,6 @@ class RoadEncoder(object):
             return self.SyncDataTime(mil_data)
 
     def SyncDataTime(self, mil_data):
-
         lane_index = mil_data[0]
         if self.CurTimestamp == 0:
             self.CurTimestamp = mil_data[5]
@@ -81,7 +92,7 @@ class RoadEncoder(object):
             print("加入")
             return None
         else:
-            if abs(mil_data[5] - self.CurTimestamp) < 200:
+            if abs(mil_data[5] - self.CurTimestamp) < 160:
                 mil_data[5] = self.CurTimestamp
                 self.L_Data.append(mil_data)
                 # if self.LaneData[lane_index] is None:

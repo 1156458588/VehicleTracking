@@ -40,7 +40,7 @@ if __name__ == '__main__':
                 # 单通道 一帧 原始数据 (1000, sensor_num)
                 tt2 = time.time()
                 print('数据形状：', data_frame[i].shape)
-                areas = get_areas.get_areas_channel(data_frame[i], i, model=None)
+                # areas = get_areas.get_areas_channel(data_frame[i], i, model=None)
                 cars = getCars(np.abs(data_frame[i]).sum(axis=0), threshold=is_average_threshold(np.abs(data_frame[i]).sum(axis=0)), distance=3, relHeight=0.8, channel=i)
                 for car in cars:
                     print('定位点：', car.position, ',范围：', car.scopes, ", 通道：", car.channel)
