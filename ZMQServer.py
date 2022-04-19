@@ -21,8 +21,8 @@ class MessageServer(object):
             data = struct.unpack('iiifiiiiQ', message)
             # timeStamp = datetime.datetime.fromtimestamp(datatime / 1000)
             # time_string = timeStamp.strftime("%Y-%m-%d %H:%M:%S.%f"
-            if data[1] == 3:
-                print('datta = ', data)
+            # if data[1] == 3:
+            #     print('datta = ', data)
             self.Enqueue(data)
 
     def StateTimer(self):

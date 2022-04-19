@@ -203,7 +203,7 @@ def is_path_judge(former_record_v, new_record_v):
                 if new_record_v[i] != line_change[i][-1] and new_record_v[i][_car_type]!=kType[i]: #车型不一致
                     time_remove_list = []
                     for time_index in range(len(line_change[i])):
-                        if time_index>0 and new_record_v[i][_t] - line_change[i][time_index][_t]> 2000: #大于2s移掉的
+                        if time_index>0 and new_record_v[i][_t] - line_change[i][time_index][_t]> 5000: #大于2s移掉的
                             time_remove_list.append(time_index)
                     for time_remove in time_remove_list:
                         line_change[i].remove(line_change[i][time_remove])

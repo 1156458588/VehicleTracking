@@ -1,4 +1,0 @@
-car
-bigcar
-follow
-other
